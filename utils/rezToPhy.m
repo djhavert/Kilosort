@@ -1,13 +1,10 @@
 
-function rezToPhy(rez, savePath, varargin)
+function rezToPhy(rez, savePath)
 % pull out results from kilosort's rez to either return to workspace or to
 % save in the appropriate format for the phy GUI to run on. If you provide
 % a savePath it should be a folder, and you will need to have npy-matlab
 % available (https://github.com/kwikteam/npy-matlab)
 
-
-[~, Nfilt, Nrank] = size(rez.W);
-rez.Wphy = cat(1, zeros(1+rez.ops.nt0min, Nfilt, Nrank), rez.W); % for Phy, we need to pad the spikes with zeros so the spikes are aligned to the center of the window
 
 % spikeTimes will be in samples, not seconds
 rez.W = gather(single(rez.Wphy));
@@ -20,10 +17,8 @@ end
 
 [~, isort]   = sort(rez.st3(:,1), 'ascend');
 rez.st3      = rez.st3(isort, :);
-if ~isempty(rez.cProj)
-    rez.cProj    = rez.cProj(isort, :);
-    rez.cProjPC  = rez.cProjPC(isort, :, :);
-end
+rez.cProj    = rez.cProj(isort, :);
+rez.cProjPC  = rez.cProjPC(isort, :, :);
 
 % ix = rez.st3(:,4)>12;
 % rez.st3 = rez.st3(ix, :);
@@ -39,8 +34,6 @@ if exist(fullfile(savePath, '.phy'), 'dir')
 end
 
 spikeTimes = uint64(rez.st3(:,1));
-% account for ops.trange(1) to accomodate real time
-spikeTimes = spikeTimes - rez.ops.trange(1)*rez.ops.fs;
 % [spikeTimes, ii] = sort(spikeTimes);
 spikeTemplates = uint32(rez.st3(:,2));
 if size(rez.st3,2)>4
@@ -63,7 +56,7 @@ Nfilt = size(W,2);
 
 templates = zeros(Nchan, nt0, Nfilt, 'single');
 for iNN = 1:size(templates,3)
-   templates(:,:,iNN) = rez.mu(iNN,1) * squeeze(U(:,iNN,:)) * squeeze(W(:,iNN,:))';
+   templates(:,:,iNN) = squeeze(U(:,iNN,:)) * squeeze(W(:,iNN,:))';
 end
 templates = permute(templates, [3 2 1]); % now it's nTemplates x nSamples x nChannels
 templatesInds = repmat([0:size(templates,3)-1], size(templates,1), 1); % we include all channels so this is trivial
@@ -104,8 +97,6 @@ tempAmps(tids) = ta; % because ta only has entries for templates that had at lea
 gain = getOr(rez.ops, 'gain', 1);
 tempAmps = gain*tempAmps'; % for consistency, make first dimension template number
 
-
-templateFeatures = [];
 if ~isempty(savePath)
     fileID = fopen(fullfile(savePath, 'cluster_KSLabel.tsv'),'w');
     fprintf(fileID, 'cluster_id%sKSLabel', char(9));
@@ -156,12 +147,11 @@ if ~isempty(savePath)
     writeNPY(chanMap0ind, fullfile(savePath, 'channel_map.npy'));
     writeNPY([xcoords ycoords], fullfile(savePath, 'channel_positions.npy'));
 
-    if ~isempty(templateFeatures)
-        writeNPY(templateFeatures, fullfile(savePath, 'template_features.npy'));
-        writeNPY(templateFeatureInds'-1, fullfile(savePath, 'template_feature_ind.npy'));% -1 for zero indexing
-        writeNPY(pcFeatures, fullfile(savePath, 'pc_features.npy'));
-        writeNPY(pcFeatureInds'-1, fullfile(savePath, 'pc_feature_ind.npy'));% -1 for zero indexing
-    end
+    writeNPY(templateFeatures, fullfile(savePath, 'template_features.npy'));
+    writeNPY(templateFeatureInds'-1, fullfile(savePath, 'template_feature_ind.npy'));% -1 for zero indexing
+    writeNPY(pcFeatures, fullfile(savePath, 'pc_features.npy'));
+    writeNPY(pcFeatureInds'-1, fullfile(savePath, 'pc_feature_ind.npy'));% -1 for zero indexing
+
 
     writeNPY(whiteningMatrix, fullfile(savePath, 'whitening_mat.npy'));
     writeNPY(whiteningMatrixInv, fullfile(savePath, 'whitening_mat_inv.npy'));
@@ -182,8 +172,20 @@ if ~isempty(savePath)
 
     % Duplicate "KSLabel" as "group", a special metadata ID for Phy, so that
     % filtering works as expected in the cluster view
-    KSLabelFilename = fullfile(savePath, 'cluster_KSLabel.tsv');
-    copyfile(KSLabelFilename, fullfile(savePath, 'cluster_group.tsv'));
+    %KSLabelFilename = fullfile(savePath, 'cluster_KSLabel.tsv');
+    %copyfile(KSLabelFilename, fullfile(savePath, 'cluster_group.tsv'));
+    % just copied lines from above and changed label to 'group' rather than 'KSLabel'
+    fileID = fopen(fullfile(savePath, 'cluster_group.tsv'),'w');
+    fprintf(fileID, 'cluster_id%sgroup', char(9));
+    fprintf(fileID, char([13 10]));
+    for j = 1:length(rez.good)
+        if rez.good(j)
+            fprintf(fileID, '%d%sgood', j-1, char(9));
+        else
+            fprintf(fileID, '%d%smua', j-1, char(9));
+        end
+        fprintf(fileID, char([13 10]));
+    end
 
      %make params file
     if ~exist(fullfile(savePath,'params.py'),'file')
@@ -192,11 +194,7 @@ if ~isempty(savePath)
 %        [~, fname, ext] = fileparts(rez.ops.fbinary);
 %         fprintf(fid,['dat_path = ''',fname ext '''\n']);
 %         fprintf(fid,'n_channels_dat = %i\n',rez.ops.NchanTOT);
-        if ~isempty(varargin)
-            [root, fname, ext] = fileparts(rez.ops.fbinary);
-        else
-            [root, fname, ext] = fileparts(rez.ops.fproc);
-        end
+        [root, fname, ext] = fileparts(rez.ops.fproc);
 %         fprintf(fid,['dat_path = ''',fname ext '''\n']);
         fprintf(fid,['dat_path = ''', strrep(rez.ops.fproc, '\', '/') '''\n']);
         

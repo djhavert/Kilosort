@@ -180,8 +180,20 @@ if ~isempty(savePath)
 
     % Duplicate "KSLabel" as "group", a special metadata ID for Phy, so that
     % filtering works as expected in the cluster view
-    KSLabelFilename = fullfile(savePath, 'cluster_KSLabel.tsv');
-    copyfile(KSLabelFilename, fullfile(savePath, 'cluster_group.tsv'));
+    %KSLabelFilename = fullfile(savePath, 'cluster_KSLabel.tsv');
+    %copyfile(KSLabelFilename, fullfile(savePath, 'cluster_group.tsv'));
+    % just copied lines from above and changed label to 'group' rather than 'KSLabel'
+    fileID = fopen(fullfile(savePath, 'cluster_group.tsv'),'w');
+    fprintf(fileID, 'cluster_id%sgroup', char(9));
+    fprintf(fileID, char([13 10]));
+    for j = 1:length(rez.good)
+        if rez.good(j)
+            fprintf(fileID, '%d%sgood', j-1, char(9));
+        else
+            fprintf(fileID, '%d%smua', j-1, char(9));
+        end
+        fprintf(fileID, char([13 10]));
+    end
 
      %make params file
     if ~exist(fullfile(savePath,'params.py'),'file')
